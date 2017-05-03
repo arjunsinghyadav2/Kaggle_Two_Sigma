@@ -9,6 +9,9 @@ More info on our blog post
 **Team Members:**
 
 Abhishek Desai
+
 Arjun Singh Yadav
+
 Domingos Lopes
+
 Kamal Sandhu
