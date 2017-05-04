@@ -1,0 +1,234 @@
+---
+title: "Visualizing Renthop Features"
+author: "Domingos Lopes"
+date: "March 5, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+We start by loading the data.
+```{r}
+packages <- c("jsonlite", "dplyr", "purrr")
+purrr::walk(packages, library, character.only = TRUE, warn.conflicts = FALSE)
+train_data <- fromJSON("../data/train.json")
+test_data <- fromJSON("../data/test.json")
+vars <- setdiff(names(train_data), c("photos", "features"))
+train_data <- map_at(train_data, vars, unlist) %>% tibble::as_tibble(.)
+vars <- setdiff(names(test_data), c("photos", "features"))
+test_data <- map_at(test_data, vars, unlist) %>% tibble::as_tibble(.)
+```
+
+In order to save space, we collapse some variables into a statistic. We also make some useful conversions.
+```{r}
+count_words <- function(x) {
+  length(unlist(strsplit(x, '\\W+')))
+}
+count_words_total <- function(x) {
+  sapply(x, function(y) sum(unlist(lapply(y, count_words))))
+}
+
+train_data <- train_data %>% mutate(created = as.POSIXct(strptime(created,
+                                                                  '%Y-%m-%d %H:%M:%S')),
+                                    desc_len = nchar(description),
+                                    desc_words = sapply(description, count_words),
+                                    photos = sapply(photos, length),
+                                    num_features = sapply(features, length),
+                                    features_words = count_words_total(features)) %>%
+  select(-features, -description)
+test_data <- test_data %>% mutate(created = as.POSIXct(strptime(created,
+                                                                '%Y-%m-%d %H:%M:%S')),
+                                  desc_len = nchar(description),
+                                  desc_words = sapply(description, count_words),
+                                  photos = sapply(photos, length),
+                                  num_features = sapply(features, length),
+                                  features_words = count_words_total(features)) %>%
+  select(-features, -description)
+```
+
+```{r}
+train_data <- train_data %>% mutate(price_per_bathroom = price/(bathrooms+1),
+                                    price_per_bedroom = price/(bedrooms+1))
+test_data <- test_data %>% mutate(price_per_bathroom = price/(bathrooms+1),
+                                  price_per_bedroom = price/(bedrooms+1))
+```
+
+```{r}
+train_data <- train_data %>% mutate(day_of_month = as.numeric(strftime(created, '%d')),
+                                    month = as.numeric(strftime(created, '%m')),
+                                    hour = as.numeric(strftime(created, '%H')),
+                                    day_of_week = factor(strftime(created, '%a'),
+    levels = c('Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun')))
+test_data <- test_data %>% mutate(day_of_month = as.numeric(strftime(created, '%d')),
+                                  month = as.numeric(strftime(created, '%m')),
+                                  hour = as.numeric(strftime(created, '%H')),
+                                  day_of_week = factor(strftime(created, '%a'),
+    levels = c('Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun')))
+```
+
+We then combine them all into a single table, so that we can verify that the train and test data have similar distributions.
+
+```{r}
+data_all <- rbind(train_data %>% select(-interest_level) %>% mutate(set = 'train'),
+                  test_data %>% mutate(set = 'test'))
+```
+
+Now let's make comparisons.
+```{r}
+library(ggplot2)
+g <- ggplot(aes(color = set), data = data_all)
+g + geom_bar(aes(x = bedrooms, fill = set), position='dodge', stat = 'count')
+```
+
+```{r}
+g + geom_bar(aes(x = bathrooms, fill = set), position='dodge', stat = 'count',
+             data = data_all[data_all$bathrooms < 15,])
+```
+
+```{r}
+g + geom_line(aes(x = log(price+1)), stat = 'density')
+```
+
+```{r}
+g + geom_bar(aes(x = num_features, fill = set), data = data_all, position = 'dodge')
+```
+
+```{r}
+g + geom_line(aes(x = sqrt(features_words)), stat = 'density')
+```
+
+```{r}
+g + geom_histogram(aes(x = sqrt(desc_len), fill = set), position = 'dodge')
+```
+
+```{r}
+g + geom_histogram(aes(x = sqrt(desc_words), fill = set), position = 'dodge')
+```
+
+```{r}
+g + geom_line(aes(x = log(price_per_bedroom+1)), stat = 'density')
+```
+
+```{r}
+g + geom_line(aes(x = log(price_per_bathroom + 1)), stat = 'density')
+```
+
+```{r}
+g + geom_bar(aes(x = hour, fill = set), position = 'dodge')
+```
+
+```{r}
+g + geom_bar(aes(x = day_of_month, fill = set), position = 'dodge')
+```
+
+```{r}
+g + geom_bar(aes(x = photos, fill = set), position = 'dodge',
+             data = data_all %>% filter(photos <= 20))
+```
+
+```{r}
+train_data$interest_level <- factor(train_data$interest_level,
+                                    levels = c('low', 'medium', 'high'))
+```
+```{r}
+g <- ggplot(aes(color = interest_level), data = train_data)
+g + geom_line(aes(x = log(price + 1)), stat = 'density')
+```
+
+```{r}
+g + geom_line(aes(x = log(price_per_bedroom + 1)), stat = 'density')
+```
+
+```{r}
+g + geom_line(aes(x = log(price_per_bathroom+1)), stat = 'density')
+```
+
+```{r}
+g + geom_bar(aes(x = hour, fill = interest_level), position = 'fill')
+```
+
+```{r}
+g + geom_bar(aes(x = day_of_month, fill = interest_level), position = 'fill')
+```
+
+```{r}
+g + geom_bar(aes(x = day_of_week, fill = interest_level), position = 'fill')
+```
+
+```{r}
+g + geom_violin(aes(x = interest_level, y = sqrt(photos), fill = interest_level))
+```
+
+```{r}
+g + geom_line(aes(x = sqrt(desc_len)), stat = 'density')
+```
+
+```{r}
+g + geom_line(aes(x = sqrt(desc_words)), stat = 'density')
+```
+
+
+```{r}
+g + geom_violin(aes(x = interest_level, y = num_features, fill = interest_level))
+```
+
+```{r}
+g + geom_violin(aes(y = sqrt(features_words), x = interest_level, fill= interest_level))
+```
+
+```{r}
+g + geom_bar(aes(x = bedrooms, fill = interest_level), position = 'fill')
+```
+
+```{r}
+g + geom_bar(aes(x = round(bathrooms), fill = interest_level), position = 'fill')
+```
+
+```{r}
+g + geom_bar(aes(x = month, fill = interest_level), position = 'dodge')
+```
+
+```{r}
+simpleCap <- function(x) {
+  s <- strsplit(x, "_")[[1]][-1]
+  paste(toupper(substring(s, 1,1)), substring(s, 2), sep="", collapse=" ")
+}
+train_features <- read.csv('../data/features_train.csv')
+features_cols <- setdiff(colnames(train_features), c('listing_id'))
+train_features <- train_features %>% inner_join(train_data %>%
+                                                  select(listing_id, interest_level),
+                                                by = 'listing_id')
+library(ggmosaic)
+for(col in features_cols) {
+  data_to_plot <- train_features[,c('listing_id', col, 'interest_level')]
+  colnames(data_to_plot) <- c('listing_id', 'feature', 'interest_level')
+  data_to_plot$feature <- factor(data_to_plot$feature,
+                                    labels = c(`0` = 'Not Present', `1` = 'Present'))
+  ggplot(aes(x = product(interest_level, feature), fill = interest_level),
+         data = data_to_plot) +
+    geom_mosaic() + labs(x = simpleCap(col), y = 'Interest Level', fill = 'Interest Level') +
+    ggsave(paste0('feature_plots/', col, '.png'), width = 5, height = 3)
+}
+```
+```{r}
+firstCap <- function(x) {
+  paste0(toupper(substring(x, 1,1)), substring(x, 2))
+}
+train_sentiment <- read.csv('../data/sentiment_train.csv')
+sentiment_cols <- setdiff(colnames(train_sentiment), c('listing_id'))
+train_sentiment <- train_sentiment %>% inner_join(train_data %>%
+                                                  select(listing_id, interest_level),
+                                                by = 'listing_id')
+library(ggmosaic)
+for(col in sentiment_cols) {
+  data_to_plot <- train_sentiment[,c('listing_id', col, 'interest_level')]
+  colnames(data_to_plot) <- c('listing_id', 'sentiment', 'interest_level')
+  ggplot(aes(x = product(interest_level, sentiment), fill = interest_level),
+         data = data_to_plot) +
+    geom_mosaic() + labs(x = firstCap(col), y ='Interest Level', fill = 'Interest Level') +
+    ggsave(paste0('sentiment_plots/', col, '.png'), width = 6, height = 6)
+}
+```
+

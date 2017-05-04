@@ -1,0 +1,12 @@
+*.pyc
+*~
+.Rhistory
+*.jpg
+*.png
+*.jpeg
+*.csv
+data/train.json
+data/test.json
+data/images*
+.ipynb_checkpoints
+
